@@ -15,15 +15,15 @@ Cortix: a program for system-level modules coupling, execution, and analysis.
 """
 #**********************************************************************************
 import os
-from mpi4py.futures import MPIPoolExecutor
 from cortix.src.utils.configtree import ConfigTree
+
 from cortix.src.launcher import Launcher
 #**********************************************************************************
 
 class Module:
-    """
+    '''
     The Module class encapsulates a computational module of some scientific domain.
-    """
+    '''
 
     def __init__(self, parent_work_dir=None, library_name=None,
                  library_parent_dir=None, mod_config_node=ConfigTree()):
@@ -32,15 +32,15 @@ class Module:
             parent_work_dir, str), "-> parent_work_dir is invalid."
 
         # Inherit a configuration tree
-        assert isinstance(
-            mod_config_node, ConfigTree), "-> mod_config_node is invalid."
+        assert isinstance(mod_config_node, ConfigTree), \
+               "-> mod_config_node is invalid."
         self.__config_node = mod_config_node
 
         # Read the module name and type
         self.__mod_name = self.__config_node.get_node_name()
         self.__mod_type = self.__config_node.get_node_type()
 
-        # Specify module library with upstream information 
+        # Specify module library with upstream information
         self.__library_parent_dir = library_parent_dir
         self.__library_name = library_name
 
@@ -123,45 +123,45 @@ class Module:
 #----------------------- end def __init__():--------------------------------------
 
     def __get_name(self):
-        """
-        Returns the module name
-        """
+        '''
+        `str`:Module name
+        '''
 
         return self.__mod_name
     name = property(__get_name, None, None, None)
 #----------------------- end def __get_name():------------------------------------
 
     def __get_library_name(self):
-        """
-        Returns the module's library name.
-        """
+        '''
+        `str`:Module library name
+        '''
 
         return self.__library_name
     library_name = property(__get_library_name, None, None, None)
 #----------------------- end def get_library_name():------------------------------
 
     def __get_library_parent_dir(self):
-        """
-        Returns the library's parent directory.
-        """
+        '''
+        `str`:Library parent directory
+        '''
 
         return self.__library_parent_dir
     library_parent_dir = property(__get_library_parent_dir, None, None, None)
 #----------------------- end def __get_library_parent_dir():----------------------
 
     def __get_ports(self):
-        """
+        '''
        `list(tuple)`: Module's ports
-        """
+        '''
 
         return self.__ports
     ports = property(__get_ports, None, None, None)
 #----------------------- end def get_ports():-------------------------------------
 
     def get_port_type(self, port_name):
-        """
-        Retuns the port type specified by port_name
-        """
+        '''
+        Returns the port type specified by port_name
+        '''
 
         port_type = None
         for port in self.__ports:
@@ -171,9 +171,9 @@ class Module:
 #----------------------- end def get_port_type():---------------------------------
 
     def get_port_mode(self, port_name):
-        """
+        '''
         Returns the port mode specified by port_name
-        """
+        '''
 
         port_mode = None
         for port in self.__ports:
@@ -183,9 +183,9 @@ class Module:
 #----------------------- end def get_port_mode():---------------------------------
 
     def __get_port_names(self):
-        """
-        Returns a list containing the name of all of the module's ports
-        """
+        '''
+        `list(tuple)`:List of names of module's ports
+        '''
 
         port_names = list()
         for port in self.__ports:
@@ -195,10 +195,10 @@ class Module:
 #----------------------- end def get_port_names():--------------------------------
 
     def has_port_name(self, port_name):
-        """
-        Returns true iff a port with the name
+        '''
+        Returns true if a port with the name
         port_name is available in the module.
-        """
+        '''
 
         for port in self.__ports:
             if port[0] == port_name:
@@ -206,17 +206,20 @@ class Module:
         return False
 #----------------------- end def has_port_name():---------------------------------
 
-    def execute(self, slot_id, runtime_cortix_param_file,
-                runtime_cortix_comm_file):
-        """
+    def execute( self, slot_id, 
+                 runtime_cortix_param_file,
+                 runtime_cortix_comm_file    ):
+        '''
         Spawns a worker process to execute the module.
-        """
+        '''
+        assert runtime_cortix_param_file[-1] is not '/'
+        assert runtime_cortix_comm_file[-1] is not '/'
 
         module_input = self.__input_file_path + self.__input_file_name
         param = runtime_cortix_param_file
-        comm = runtime_cortix_comm_file
+        comm  = runtime_cortix_comm_file
 
-        full_path_comm_dir = comm[:comm.rfind('/')] + '/'
+        full_path_comm_dir = comm[:comm.rfind('/')] + '/' # extract directory name
         runtime_module_status_file = full_path_comm_dir + 'runtime-status.xml'
 
         status = runtime_module_status_file
@@ -225,29 +228,31 @@ class Module:
         mod_name = self.__mod_name
 
         # provide for all modules for additional work IO data
-        assert os.path.isdir(
-            full_path_comm_dir), 'module directory not available.'
+        assert os.path.isdir(full_path_comm_dir), \
+               'module directory %r not available.' % full_path_comm_dir
+
         mod_work_dir = full_path_comm_dir + 'wrk/'
 
         os.system('mkdir -p ' + mod_work_dir)
 
-        assert os.path.isdir(
-            mod_work_dir), 'module work directory not available.'
+        assert os.path.isdir(mod_work_dir), \
+               'module work directory %r not available.' % mod_work_dir
 
-        # only for wrapped modules
+        # only for wrapped modules (deprecated; remove in the future)
         mod_exec_name = self.__executable_path + self.__executable_name
 
-        # run module on its own thread using file IO communication
-        launch = Launcher(library_name, mod_name,
-                          slot_id,
-                          module_input,
-                          mod_exec_name,
-                          mod_work_dir,
-                          param, comm, status)
+        # the laucher "loads" the module dynamically and provides the method for
+        # threading
+        launch = Launcher( library_name, mod_name,
+                           slot_id,
+                           module_input,
+                           mod_exec_name,
+                           mod_work_dir,
+                           param, comm, status )
 
-        # Launch an MPI process
-        executor = MPIPoolExecutor(max_workers=1)
-        future = executor.submit(launch.run())
+        # run module on its own process (file IO communication will take place
+        # between modules)
+        launch.start() # this start a thread and runs the run() method of launch
 
         return runtime_module_status_file
 #----------------------- end def execute():---------------------------------------
